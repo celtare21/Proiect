@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.NetworkInformation;
 
 namespace Proiect
 {
@@ -11,10 +12,34 @@ namespace Proiect
 
         public static void Main()
         {
-            Console.WriteLine("Press any key to scan for active remote desktop sessions...");
-            Console.ReadKey();
+            int numOption;
 
-            CheckRdcConnections();
+            while (true)
+            {
+                Console.WriteLine("1. Check RDC Connections");
+                Console.WriteLine("2. Check LAN connections");
+                var option = Console.ReadLine();
+
+                if (!int.TryParse(option, out numOption))
+                {
+                    Console.Clear();
+                    continue;
+                }
+
+                break;
+            }
+
+            switch (numOption)
+            {
+                case 1:
+                    CheckRdcConnections();
+                    break;
+                case 2:
+                    CheckLanConnection();
+                    break;
+            }
+
+            Console.ReadKey();
         }
 
         private static void CheckRdcConnections()
@@ -30,11 +55,13 @@ namespace Proiect
                     continue;
                 }
 
+                Console.WriteLine($"Stopped connection with session id {idNum}");
+
                 LocalSessions[idNum].StopRemoteControl();
                 LocalSessions.Remove(idNum);
-            }
 
-            Console.ReadKey();
+                Console.ReadKey();
+            }
         }
 
         private static bool IsRdcActive()
@@ -61,6 +88,55 @@ namespace Proiect
 
                 return false;
             }
+        }
+
+        private static void CheckLanConnection()
+        {
+            var networkConnection = IsNetworkAvailable();
+            Console.WriteLine($"LAN adapter status: {networkConnection}");
+            Console.WriteLine("Press ENTER to toggle status or any other key to exit");
+            var key = Console.ReadKey();
+
+            if (key.Key == ConsoleKey.Enter)
+                ToggleAdapterStatus(!networkConnection);
+        }
+
+        private static bool IsNetworkAvailable()
+        {
+            if (!NetworkInterface.GetIsNetworkAvailable())
+                return false;
+
+            return (from ni in NetworkInterface.GetAllNetworkInterfaces()
+                where ni.OperationalStatus == OperationalStatus.Up && ni.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                      ni.NetworkInterfaceType != NetworkInterfaceType.Tunnel
+                where ni.Speed >= 0
+                where ni.Description.IndexOf("virtual", StringComparison.OrdinalIgnoreCase) < 0 && ni.Name.IndexOf("virtual", StringComparison.OrdinalIgnoreCase) < 0
+                select ni).Any(ni => !ni.Description.Equals("Microsoft Loopback Adapter", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void ToggleAdapterStatus(bool enable)
+        {
+            const string interfaceName = "Ethernet";
+            var option = enable ? "enable" : "disable";
+            var process = new System.Diagnostics.Process();
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "netsh",
+                Arguments = $"interface set interface \"{interfaceName}\" {option}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            process.StartInfo = startInfo;
+            process.EnableRaisingEvents = true;
+
+            process.Start();
+            process.WaitForExit();
+
+            Console.WriteLine($"Connection status: {option}");
+            Console.WriteLine("Press any key to quit...");
         }
     }
 }
